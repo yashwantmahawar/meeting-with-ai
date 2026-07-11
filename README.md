@@ -38,8 +38,8 @@ A powerful, serverless web application that records your live browser and microp
 
 1.  **Clone the repository and open the folder:**
     ```bash
-    git clone <your-repo-url>
-    cd <repo-folder>
+    git clone git@github.com:yashwantmahawar/meeting-with-ai.git
+    cd meeting-with-ai
     ```
 
 2.  **Run the automated startup script:**
