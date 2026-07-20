@@ -407,6 +407,41 @@ function showApiError(msg) {
         if (errEl) errEl.style.display = 'none';
     }
 
+    function showUIError(msg) {
+        window.focus(); // Attempt to pull focus back to this tab
+        
+        const toast = document.createElement('div');
+        toast.textContent = msg;
+        toast.style.position = 'fixed';
+        toast.style.top = '20px';
+        toast.style.left = '50%';
+        toast.style.transform = 'translateX(-50%)';
+        toast.style.backgroundColor = '#ef4444'; // Red for error
+        toast.style.color = '#fff';
+        toast.style.padding = '12px 24px';
+        toast.style.borderRadius = '8px';
+        toast.style.boxShadow = '0 10px 15px -3px rgba(0,0,0,0.2)';
+        toast.style.zIndex = '99999';
+        toast.style.fontFamily = 'Inter, sans-serif';
+        toast.style.fontSize = '0.95rem';
+        toast.style.fontWeight = '500';
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s ease';
+        
+        document.body.appendChild(toast);
+        
+        // Trigger fade in
+        setTimeout(() => {
+            toast.style.opacity = '1';
+        }, 10);
+        
+        // Remove after 6 seconds
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 6000);
+    }
+
     async function fetchLiveInsights(apiKey) {
         if (!currentTranscript) return;
         liveInsightsSection.style.display = 'block';
@@ -541,10 +576,12 @@ function showApiError(msg) {
 }
 
 startBtn.addEventListener('click', async () => {
+    clearApiError(); // Clear any existing errors when starting
+    
     const key = apiKeyInput.value.trim();
     
     if (!key) {
-        showApiError('Please provide a Gemini API Key first.');
+        showUIError('Please provide a Gemini API Key first.');
         return;
     }
 
@@ -556,7 +593,7 @@ startBtn.addEventListener('click', async () => {
         const captureSysAudio = cardTabAudio.classList.contains('active') || cardMeetingOnly.classList.contains('active');
         
         if (!captureMicAudio && !captureSysAudio) {
-            alert('Please select at least one audio source (Microphone or Meeting Audio).');
+            showUIError('Please select at least one audio source (Microphone or Meeting Audio).');
             return;
         }
 
@@ -570,10 +607,34 @@ startBtn.addEventListener('click', async () => {
         // 2. Get Display Media if checked
         if (captureSysAudio) {
             try {
-                const displayStream = await navigator.mediaDevices.getDisplayMedia({
+                let displayMediaOptions = {
                     video: { displaySurface: "browser" },
                     audio: true
-                });
+                };
+                
+                let controller = null;
+                // Chrome 109+ supports CaptureController for conditional tab switching
+                if (typeof CaptureController === 'function') {
+                    controller = new CaptureController();
+                    displayMediaOptions.controller = controller;
+                }
+
+                const displayStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+                
+                // Immediately determine focus behavior in the same microtask
+                if (controller) {
+                    try {
+                        if (displayStream.getAudioTracks().length === 0) {
+                            // If audio is missing, stay on the AI Meetings tab to show the error
+                            controller.setFocusBehavior("no-focus-change");
+                        } else {
+                            // If successful, jump to the shared tab
+                            controller.setFocusBehavior("focus-captured-surface");
+                        }
+                    } catch (e) {
+                        console.warn("Could not set focus behavior:", e);
+                    }
+                }
                 
                 if (displayStream.getVideoTracks().length > 0) {
                     const label = displayStream.getVideoTracks()[0].label || "";
@@ -594,12 +655,27 @@ startBtn.addEventListener('click', async () => {
                     activeStreams.push(displayStream);
                 } else {
                     console.warn("User didn't share tab audio.");
+                    // Stop any video tracks that were acquired
+                    displayStream.getTracks().forEach(track => track.stop());
+                    
+                    // Stop previously acquired mic stream
+                    if (activeStreams) {
+                        activeStreams.forEach(s => s.getTracks().forEach(t => t.stop()));
+                        activeStreams = [];
+                    }
+                    throw new Error("Tab audio was not shared. Please ensure you check 'Share tab audio' in the popup.");
                 }
                 
-                // Stop video tracks immediately
+                // Stop video tracks immediately since we only need audio
                 displayStream.getVideoTracks().forEach(track => track.stop());
             } catch(e) {
-                console.warn("Display media cancelled.", e);
+                console.warn("Display media cancelled or failed.", e);
+                // Stop any already acquired streams (e.g., micStream)
+                if (activeStreams) {
+                    activeStreams.forEach(s => s.getTracks().forEach(t => t.stop()));
+                    activeStreams = [];
+                }
+                throw e; // Abort the recording process completely
             }
         }
 
@@ -799,7 +875,16 @@ startBtn.addEventListener('click', async () => {
         
     } catch (err) {
         console.error("Error starting recording:", err);
-        alert('Could not start recording. Did you grant permission?');
+        
+        // If the user simply cancelled the permissions prompt, fail silently
+        if (err.name === 'NotAllowedError' || (err.message && err.message.toLowerCase().includes('permission denied'))) {
+            // Silently reset UI
+        } else if (err.message && err.message.includes("Tab audio was not shared")) {
+            showUIError(err.message);
+        } else {
+            showUIError('Could not start recording. Please check your browser permissions.');
+        }
+        
         validateStartButton();
     }
 });

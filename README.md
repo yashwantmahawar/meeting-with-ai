@@ -25,7 +25,9 @@ A powerful, serverless web application that records your live browser and microp
 *   **Executive MOM Generation:** At the end of the meeting, the AI generates a strict, outcome-focused Markdown summary detailing the exact decisions made, skipping all the useless small talk.
 *   **Action Items & Emails:** Automatically extracts assigned tasks into a beautiful Markdown table and drafts a non-speaker-centric, highly professional follow-up email ready to copy-paste.
 *   **Meeting History:** Automatically saves past meetings—including transcripts, MOMs, and insights—to a local SQLite database (`history.db`). Browse, search, rename, and revisit your past meetings directly from the UI.
+*   **Google Docs Integration:** Features native Rich-Text Copy-to-Clipboard capabilities, allowing you to instantly copy formatted MOMs and Action Items seamlessly into Google Docs with headers, bolding, and bullet points perfectly preserved.
 *   **PDF Export:** Export your generated MOMs directly to PDF with a single click.
+*   **Cloud Run Ready:** Includes built-in `Dockerfile` and setup scripts for instant deployment to Google Cloud Run, allowing you to run the app in stateless cloud environments.
 
 ## 🛠️ Technology Stack
 
