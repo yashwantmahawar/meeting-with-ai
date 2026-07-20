@@ -55,6 +55,16 @@ def index() -> Any:
     return app.send_static_file("index.html")
 
 
+@app.route("/api/config", methods=["GET"])
+def get_config():
+    """
+    Returns frontend configuration options.
+    """
+    return jsonify({
+        "enable_history": os.environ.get("ENABLE_HISTORY", "true").lower() == "true"
+    })
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat() -> Any:
     """
@@ -139,7 +149,7 @@ def transcribe_chunk() -> Any:
 
         prompt = f"""You are a precise audio transcription bot. Your ONLY job is to transcribe the spoken words in the attached audio clip.
 
-Please include speaker labels (e.g., **Speaker A:**, **Speaker B:**, or their actual names if known) for different voices you hear in this short clip.
+Please include speaker labels (e.g., **Speaker A:**, **Speaker B:**) for different voices you hear in this short clip. DO NOT guess or hallucinate actual names of people unless they explicitly introduce themselves in the audio. If a person is merely mentioned in the conversation (in the third person), DO NOT tag them as the speaker. When in doubt, strictly use generic labels (Speaker A, Speaker B, etc.) to ensure accuracy.
 {history_context}
 You MUST insert a double line break (\\n\\n) every time a new speaker starts.
 CRITICAL: If the audio is silent, just background noise, or contains no discernible human speech, YOU MUST OUTPUT EXACTLY the word: [SILENCE]. 
@@ -147,7 +157,8 @@ CRITICAL: ALWAYS write your output using English words and the English alphabet 
 CRITICAL RULES TO PREVENT HALLUCINATIONS:
 1. ONLY TRANSCRIBE THE NEW AUDIO CLIP. DO NOT REPEAT ANY TEXT FROM THE 'RECENT MEETING HISTORY' BLOCK.
 2. If there is no speech, do NOT make up text. Do NOT hallucinate podcast intros, stories, or random speech. 
-3. Only transcribe what you literally hear in the audio file right now."""
+3. Only transcribe what you literally hear in the audio file right now.
+4. DO NOT assign speech to someone who isn't speaking."""
 
         # Generate transcription using strict constraints
         response = client.models.generate_content(
@@ -256,15 +267,19 @@ Hi Team,
 
         # Save to SQLite
         try:
-            conn = get_db_connection()
-            title_to_save = meeting_name if meeting_name else f"Meeting on {today_date}"
-            cursor = conn.execute(
-                'INSERT INTO meetings (title, date, transcript, mom, action_items, email_draft) VALUES (?, ?, ?, ?, ?, ?)',
-                (title_to_save, today_date, transcript_text, response_mom.text, response_action_items.text, response_email.text)
-            )
-            meeting_id = cursor.lastrowid
-            conn.commit()
-            conn.close()
+            enable_history = os.environ.get("ENABLE_HISTORY", "true").lower() == "true"
+            if enable_history:
+                conn = get_db_connection()
+                title_to_save = meeting_name if meeting_name else f"Meeting on {today_date}"
+                cursor = conn.execute(
+                    'INSERT INTO meetings (title, date, transcript, mom, action_items, email_draft) VALUES (?, ?, ?, ?, ?, ?)',
+                    (title_to_save, today_date, transcript_text, response_mom.text, response_action_items.text, response_email.text)
+                )
+                meeting_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+            else:
+                meeting_id = None
         except Exception as db_err:
             app.logger.warning(f"Failed to save meeting to DB: {db_err}")
             meeting_id = None

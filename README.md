@@ -149,9 +149,11 @@ This application is designed to be fully serverless and stateless. It scales to 
       --source . \
       --project YOUR_GCP_PROJECT_ID \
       --region us-central1 \
-      --allow-unauthenticated
+      --allow-unauthenticated \
+      --update-env-vars ENABLE_HISTORY=false
     ```
-*(Note: If deployed to a stateless environment like Cloud Run, the local SQLite `history.db` will be wiped when the container spins down. For persistent history in the cloud, you should attach a persistent volume or modify the backend to use a hosted database.)*
+
+> **Note on History:** By default, history is saved to a local SQLite database (`history.db`). Since Cloud Run is stateless, this database will be wiped when the container spins down. It is highly recommended to set `ENABLE_HISTORY=false` (as shown in the command above) when deploying to Cloud Run. Doing so will completely disable the database saving and hide the "History" button from the UI. If you want to keep history enabled in the cloud, you must attach a persistent volume or modify the backend to use a hosted database.
 
 ## 🔒 Security & Privacy
 

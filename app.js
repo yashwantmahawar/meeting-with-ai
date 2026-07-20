@@ -30,6 +30,17 @@ const cardMicOnly = document.getElementById('cardMicOnly');
 const cardTabAudio = document.getElementById('cardTabAudio');
 const cardMeetingOnly = document.getElementById('cardMeetingOnly');
 
+// Fetch configuration from the server
+fetch('/api/config')
+    .then(res => res.json())
+    .then(data => {
+        if (data.enable_history === false) {
+            const historyBtnEl = document.getElementById('historyBtn');
+            if (historyBtnEl) historyBtnEl.style.display = 'none';
+        }
+    })
+    .catch(console.error);
+
 if (cardMicOnly && cardTabAudio && cardMeetingOnly) {
     cardMicOnly.addEventListener('click', () => {
         cardMicOnly.classList.add('active');
@@ -146,6 +157,37 @@ function updateActiveTab(activeTab) {
     });
 }
 
+async function copyRichText(markdownText, buttonElement) {
+    const originalText = buttonElement.innerHTML;
+    buttonElement.innerHTML = '📋 Copying...';
+    
+    const htmlContent = marked.parse(markdownText);
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = htmlContent;
+    const plainText = tempDiv.innerText;
+
+    const blobHtml = new Blob([htmlContent], { type: 'text/html' });
+    const blobText = new Blob([plainText], { type: 'text/plain' });
+    
+    try {
+        const data = [new ClipboardItem({
+            'text/html': blobHtml,
+            'text/plain': blobText
+        })];
+        await navigator.clipboard.write(data);
+        buttonElement.innerHTML = '✅ Copied!';
+    } catch (e) {
+        console.error('Rich copy failed, falling back to text', e);
+        await navigator.clipboard.writeText(markdownText);
+        buttonElement.innerHTML = '✅ Copied!';
+    }
+    
+    setTimeout(() => {
+        buttonElement.innerHTML = originalText;
+    }, 2000);
+}
+
+
 const defaultMomPrompt = `Provide a thorough and impressive summary of this meeting. Create the format for your report in Markdown that best fits this type of meeting.`;
 
 tabMom.addEventListener('click', () => {
@@ -213,12 +255,8 @@ tabMom.addEventListener('click', () => {
         }
     });
 
-    document.getElementById('copyMomBtn').addEventListener('click', () => {
-        navigator.clipboard.writeText(currentMom).then(() => {
-            const btn = document.getElementById('copyMomBtn');
-            btn.textContent = "✅ Copied!";
-            setTimeout(() => btn.textContent = "📋 Copy to Clipboard", 2000);
-        });
+    document.getElementById('copyMomBtn').addEventListener('click', function() {
+        copyRichText(currentMom, this);
     });
 });
 
@@ -244,12 +282,8 @@ tabEmailDraft.addEventListener('click', () => {
         <div>${DOMPurify.sanitize(rawHtml)}</div>
     `;
     
-    document.getElementById('copyEmailBtn').addEventListener('click', () => {
-        navigator.clipboard.writeText(currentEmailDraft).then(() => {
-            const btn = document.getElementById('copyEmailBtn');
-            btn.textContent = "✅ Copied!";
-            setTimeout(() => btn.textContent = "📋 Copy to Clipboard", 2000);
-        });
+    document.getElementById('copyEmailBtn').addEventListener('click', function() {
+        copyRichText(currentEmailDraft, this);
     });
 });
 
@@ -341,7 +375,18 @@ tabInsights.addEventListener('click', () => {
 function renderResult(text) {
     if (!text) return;
     const rawHtml = marked.parse(text);
-    resultsContent.innerHTML = DOMPurify.sanitize(rawHtml);
+    resultsContent.innerHTML = `
+        <div style="margin-bottom: 15px; text-align: right;">
+            <button id="copyGenericBtn" style="background: var(--primary); color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.9rem;">
+                📋 Copy to Clipboard
+            </button>
+        </div>
+        <div>${DOMPurify.sanitize(rawHtml)}</div>
+    `;
+    
+    document.getElementById('copyGenericBtn').addEventListener('click', function() {
+        copyRichText(text, this);
+    });
 }
 
 function showApiError(msg) {
@@ -1012,24 +1057,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
 });
 
-// --- PDF Export Logic ---
+// --- Export Logic ---
 exportPdfBtn.addEventListener('click', () => {
     exportModal.style.display = 'flex';
 });
 
-cancelExportBtn.addEventListener('click', () => {
-    exportModal.style.display = 'none';
-});
-
-confirmExportBtn.addEventListener('click', () => {
-    exportModal.style.display = 'none';
+function getExportContainer() {
+    const container = document.createElement('div');
+    container.style.padding = '20px';
+    container.style.fontFamily = 'system-ui, -apple-system, sans-serif';
     
-    // Create a temporary container for the PDF content
-    const pdfContainer = document.createElement('div');
-    pdfContainer.style.padding = '20px';
-    pdfContainer.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-    
-    // Helper to add a section
     const addSection = (title, markdownOrHtml, isHtml=false) => {
         const titleEl = document.createElement('h2');
         titleEl.textContent = title;
@@ -1037,7 +1074,7 @@ confirmExportBtn.addEventListener('click', () => {
         titleEl.style.borderBottom = '2px solid #e2e8f0';
         titleEl.style.paddingBottom = '8px';
         titleEl.style.marginTop = '24px';
-        pdfContainer.appendChild(titleEl);
+        container.appendChild(titleEl);
         
         const contentEl = document.createElement('div');
         contentEl.style.fontSize = '14px';
@@ -1049,38 +1086,69 @@ confirmExportBtn.addEventListener('click', () => {
         } else {
             contentEl.innerHTML = marked.parse(markdownOrHtml);
         }
-        
-        pdfContainer.appendChild(contentEl);
+        container.appendChild(contentEl);
     };
 
-    if (document.getElementById('exportCheckMom').checked && currentMom) {
-        addSection('MOM Summary', currentMom);
-    }
-    
-    if (document.getElementById('exportCheckEmailDraft').checked && currentEmailDraft) {
-        addSection('Follow-Up Email Draft', currentEmailDraft);
-    }
-    
-    if (document.getElementById('exportCheckActionItems').checked && currentActionItems) {
-        addSection('Action Items', currentActionItems);
-    }
-    
-    if (document.getElementById('exportCheckTranscript').checked && currentTranscript) {
-        addSection('Full Transcript', currentTranscript);
-    }
-    
+    if (document.getElementById('exportCheckMom').checked && currentMom) addSection('MOM Summary', currentMom);
+    if (document.getElementById('exportCheckEmailDraft').checked && currentEmailDraft) addSection('Follow-Up Email Draft', currentEmailDraft);
+    if (document.getElementById('exportCheckActionItems').checked && currentActionItems) addSection('Action Items', currentActionItems);
+    if (document.getElementById('exportCheckTranscript').checked && currentTranscript) addSection('Full Transcript', currentTranscript);
     if (document.getElementById('exportCheckInsights').checked && currentInsightsHtml) {
-        // Strip out checkboxes for PDF since they don't render well
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = currentInsightsHtml;
         tempDiv.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.remove());
         addSection('What to Ask Next (Gemini) History', tempDiv.innerHTML, true);
     }
 
-    if (pdfContainer.childNodes.length === 0) {
+    if (container.childNodes.length === 0) {
         alert('Please select at least one section to export.');
-        return;
+        return null;
     }
+    return container;
+}
+
+const confirmCopyBtn = document.getElementById('confirmCopyBtn');
+if (confirmCopyBtn) {
+    confirmCopyBtn.addEventListener('click', () => {
+        const container = getExportContainer();
+        if (!container) return;
+        
+        const originalText = confirmCopyBtn.textContent;
+        confirmCopyBtn.textContent = 'Copying...';
+        
+        const blobHtml = new Blob([container.innerHTML], { type: 'text/html' });
+        const blobText = new Blob([container.innerText], { type: 'text/plain' });
+        
+        try {
+            const data = [new ClipboardItem({
+                'text/html': blobHtml,
+                'text/plain': blobText
+            })];
+            
+            navigator.clipboard.write(data).then(() => {
+                confirmCopyBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                    confirmCopyBtn.textContent = originalText;
+                    exportModal.style.display = 'none';
+                }, 1500);
+            });
+        } catch (e) {
+            console.error('Clipboard API not supported or failed', e);
+            alert('Clipboard copy failed. Your browser might not support it.');
+            confirmCopyBtn.textContent = originalText;
+        }
+    });
+}
+
+cancelExportBtn.addEventListener('click', () => {
+    exportModal.style.display = 'none';
+});
+
+confirmExportBtn.addEventListener('click', () => {
+    const pdfContainer = getExportContainer();
+    if (!pdfContainer) return;
+    exportModal.style.display = 'none';
+
 
     const originalText = confirmExportBtn.textContent;
     confirmExportBtn.textContent = 'Generating...';
