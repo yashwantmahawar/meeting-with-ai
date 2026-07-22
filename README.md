@@ -92,8 +92,9 @@ macOS uses `launchd` for background services.
     <string>com.user.meetingagent</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
-        <string>/absolute/path/to/server.py</string>
+        <!-- Use the virtual environment's python, not the global python3 -->
+        <string>/absolute/path/to/meetings-folder/venv/bin/python</string>
+        <string>server.py</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/absolute/path/to/meetings-folder</string>
@@ -118,7 +119,8 @@ Description=AI Meeting Agent
 After=network.target
 
 [Service]
-ExecStart=/usr/bin/python3 /absolute/path/to/server.py
+# Use the virtual environment's python, not the global python3
+ExecStart=/absolute/path/to/meetings-folder/venv/bin/python server.py
 WorkingDirectory=/absolute/path/to/meetings-folder
 Restart=always
 User=your_username
